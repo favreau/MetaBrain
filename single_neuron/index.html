@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Neuron Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            background: linear-gradient(to bottom, #1e3c72, #2a5298); /* Gradient background */
+        }
+        canvas { display: block; }
+        #legend {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(64, 64, 64, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="legend">
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff0000;"></div>
+            Soma (Red)
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #0000ff;"></div>
+            Axon (Blue)
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #00ff00;"></div>
+            Dendrite (Green)
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ffff00;"></div>
+            Other (Yellow)
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        // Setup the basic scene with Three.js
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 3000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // Resize the renderer on window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Add OrbitControls for mouse interaction
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 100;
+        controls.maxDistance = 2000;
+
+        // Add a point light for better shading
+        const pointLight = new THREE.PointLight(0xffffff, 1, 1000);
+        pointLight.position.set(50, 50, 50);
+        pointLight.castShadow = true;
+        scene.add(pointLight);
+
+        // Add ambient light for general illumination
+        const ambientLight = new THREE.AmbientLight(0x505050); // soft white light
+        scene.add(ambientLight);
+
+        // Add a spotlight for dramatic lighting effect
+        const spotLight = new THREE.SpotLight(0xffffff, 0.8);
+        spotLight.position.set(-100, 150, 100);
+        spotLight.castShadow = true;
+        spotLight.angle = Math.PI / 6;
+        spotLight.penumbra = 0.2;
+        spotLight.decay = 2;
+        spotLight.distance = 1000;
+        scene.add(spotLight);
+
+        // Add a directional light for additional shadow effects
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight.position.set(0, 200, 100);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.camera.top = 200;
+        directionalLight.shadow.camera.bottom = -200;
+        directionalLight.shadow.camera.left = -200;
+        directionalLight.shadow.camera.right = 200;
+        scene.add(directionalLight);
+
+        // Position the camera
+        camera.position.set(0, 0, 500);
+        controls.update();
+
+        // Function to load SWC data
+        async function loadSWC(url) {
+            const response = await fetch(url);
+            const text = await response.text();
+            const lines = text.split('\n').filter(line => !line.startsWith('#') && line.trim() !== '');
+            const points = [];
+            let somaPosition = null;
+
+            lines.forEach(line => {
+                const parts = line.trim().split(/\s+/);
+                const [id, type, x, y, z, radius, parent] = parts.map(Number);
+                points.push({ id, type, x, y, z, radius, parent });
+                if (type === 1) { // Type 1 typically represents the soma
+                    somaPosition = { x, y, z };
+                }
+            });
+
+            return { points, somaPosition };
+        }
+
+        // Function to get material based on type
+        function getMaterialByType(type) {
+            switch (type) {
+                case 1: // Soma
+                    return new THREE.MeshPhongMaterial({ color: 0xff0000 }); // Red
+                case 2: // Axon
+                    return new THREE.MeshPhongMaterial({ color: 0x0000ff }); // Blue
+                case 3: // Dendrite
+                    return new THREE.MeshPhongMaterial({ color: 0x00ff00 }); // Green
+                default:
+                    return new THREE.MeshPhongMaterial({ color: 0xffff00 }); // Yellow for other types
+            }
+        }
+
+        // Function to create a basic cone between two points
+        function createBasicCone(point1, point2, radius1, radius2, material) {
+            const direction = new THREE.Vector3(point2.x - point1.x, point2.y - point1.y, point2.z - point1.z);
+            const length = direction.length();
+            direction.normalize();
+
+            const coneGeometry = new THREE.CylinderGeometry(radius2, radius1, length, 8, 1, true);
+            const cone = new THREE.Mesh(coneGeometry, material);
+            cone.castShadow = true;
+            cone.receiveShadow = true;
+
+            const midPoint = new THREE.Vector3(
+                (point1.x + point2.x) / 2,
+                (point1.y + point2.y) / 2,
+                (point1.z + point2.z) / 2
+            );
+            cone.position.copy(midPoint);
+
+            const axis = new THREE.Vector3(0, 1, 0).cross(direction).normalize();
+            const angle = Math.acos(direction.y);
+            cone.setRotationFromAxisAngle(axis, angle);
+
+            return cone;
+        }
+
+        // Function to create a sphere at the end of the cone
+        function createSphere(point, radius, material) {
+            const sphereGeometry = new THREE.SphereGeometry(radius, 16, 16);
+            const sphere = new THREE.Mesh(sphereGeometry, material);
+            sphere.position.set(point.x, point.y, point.z);
+            sphere.castShadow = true;
+            sphere.receiveShadow = true;
+            return sphere;
+        }
+
+        // Get SWC URL from parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const swcUrl = urlParams.get('swc') || 'neuron.swc';
+
+        // Load the SWC file and visualize the neuron
+        loadSWC(swcUrl).then(data => {
+            const { points, somaPosition } = data;
+            points.forEach(point => {
+                if (point.parent !== -1) {
+                    const parentPoint = points.find(p => p.id === point.parent);
+                    const material = getMaterialByType(point.type);
+                    const cone = createBasicCone(parentPoint, point, parentPoint.radius, point.radius, material);
+                    const sphere = createSphere(point, point.radius, material);
+                    scene.add(cone);
+                    scene.add(sphere);
+                }
+            });
+
+            if (somaPosition) {
+                controls.target.set(somaPosition.x, somaPosition.y, somaPosition.z);
+                controls.update();
+            }
+
+            animate();
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+    </script>
+</body>
+</html>
