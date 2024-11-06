@@ -1,3 +1,5 @@
+# Diffusion Tensor Imaging as point cloud
+
 Hey tech enthusiasts,
 
 Virtual reality experience that takes Diffusion Tensor Imaging (DTI) to the next level. Imagine walking through the intricate neural pathways of the human brain, visualized as a mesmerizing network of point clouds—now possible in full VR.
